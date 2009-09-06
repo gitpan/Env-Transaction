@@ -4,15 +4,13 @@ use Data::Dumper;
 use 5.008008;
 use strict;
 use warnings;
-use Clone qw(clone);
 use Carp;
 require Exporter;
 use Env::Transaction::Task;
 use Env::Transaction::AtomicTask;
 use Env::Transaction::CheckpointTask;
-use Readonly;
 sub DEBUG { return 0; }
-our $VERSION = '0.00_01';
+our $VERSION = '0.00_02';
 ## no critic
 $VERSION = eval $VERSION;  # see L<perlmodstyle>
 ## use critic
@@ -58,17 +56,17 @@ sub new
 	$tx->{id} = sprintf "%lu.%lu", $$, $tx+0;
 	if (defined $args{protocol}) {
 		if ($args{protocol} == TX_ONE_PHASE_COMMIT || $args{protocol} == TX_TWO_PHASE_COMMIT) {
-			Readonly::Scalar $tx->{protocol} => delete $args{protocol};
+			$tx->{protocol} = delete $args{protocol};
 		} else {
 			carp('unknown commit protocol');
 			return wantarray? () : undef;
 		}
 	} else {
 		carp('setting default protocol to TX_ONE_PHASE_COMMIT');
-		Readonly::Scalar $tx->{protocol} => TX_ONE_PHASE_COMMIT;
+		$tx->{protocol} = TX_ONE_PHASE_COMMIT;
 	} 
 	if (defined $args{autorollback}) {
-		Readonly::Scalar $tx->{autorollback} => 1;
+		$tx->{autorollback} = 1;
 	}
 	return bless $tx, __PACKAGE__;
 }
@@ -105,7 +103,7 @@ sub prepare
 		}
 		#$task->mark_ok();
 		push @{ $_[TX]->{taskq} }, $task;
-		__TX_task_id($_[TX],$task,$#{ @{ $_[TX]->{taskq} } });
+		__TX_task_id($_[TX],$task,$#{  $_[TX]->{taskq}  });
 		if ( $_[TX]->{protocol} == TX_TWO_PHASE_COMMIT ) {
 			DEBUG and print "two phase commit mode, doing immediate commit for task ". $task->name()."\n";
 			if ( !$_[TX]->commit() ) {
@@ -130,13 +128,13 @@ sub commit
 		return wantarray?():undef;
 	}
 	if (  $_[TX]->{protocol} == TX_TWO_PHASE_COMMIT ) {
-		if ( $#{ @{ $_[TX]->{taskq} } } == -1 ) {
+		if ( $#{  $_[TX]->{taskq}  } == -1 ) {
 			DEBUG and print "call commit() on TX with no task in two-phase commit mode, assuming callbacks\n";
 			$_[TX]->__TX_run_cb();
 			$_[TX]->{state} = ST_TX_FINI;
 			return 1;
 		}
-		if ( $#{ @{ $_[TX]->{taskq} } } > 0 ) { #we should have only one task in queue
+		if ( $#{  $_[TX]->{taskq}  } > 0 ) { #we should have only one task in queue
 			carp('COMMIT: found uncommited tasks in queue while in TX_TWO_PHASE_COMMIT mode!'.$#{ @{ $_[TX]->{taskq} } });
 			$_[TX]->__rb();
 			$_[TX]->tx_mark_failed();
@@ -145,7 +143,7 @@ sub commit
 	}
 	#run the tasks
 	while (my $task = shift @{ $_[TX]->{taskq} }) {
-		DEBUG and print "shift one task from queue, remain: ". $#{ @{ $_[TX]->{taskq} } }."\n";
+		DEBUG and print "shift one task from queue, remain: ". $#{  $_[TX]->{taskq}  }."\n";
 		if ($task->failed()) {
 			carp('COMMIT: can\'t commit task '. $task->name().' because it is marked as failed: '.sprintf("0x%x",$task->state()));
 			#carp("autorollback=".$_[TX]->{autorollback});
@@ -155,8 +153,8 @@ sub commit
 		my @rc = $_[TX]->__TX_run_task($task);
 		my $chk_rc = $task->{'_rc'};
 		my @args = ();
-		if ( $#{@$chk_rc} > 0 ) {
-			@args = (@{$chk_rc}[1..$#{@$chk_rc}],@rc)
+		if ( $#{$chk_rc} > 0 ) {
+			@args = (@{$chk_rc}[1..$#{$chk_rc}],@rc)
 		} else {
 			@args = @rc;
 		}
@@ -185,13 +183,13 @@ sub results
 
 sub rollback
 {
-	my $rstack_top_idx = $#{ @{ $_[TX]->{rstack} } };
+	my $rstack_top_idx = $#{  $_[TX]->{rstack}  };
 	my $rb_start_from = $rstack_top_idx;
 	if ($_[TX]->{rstack}->[$rstack_top_idx]->isa('Env::Transaction::AtomicTask') &&
 		$_[TX]->{rstack}->[$rstack_top_idx]->failed()) {
 			$rb_start_from = $rstack_top_idx - 1;
 	}
-	DEBUG and print STDERR "rstack_last_idx = ".$#{ @{ $_[TX]->{rstack} } }.", rb_start_from=$rb_start_from\n";
+	DEBUG and print STDERR "rstack_last_idx = ".$#{  $_[TX]->{rstack}  }.", rb_start_from=$rb_start_from\n";
 	#my $rb_start_from = $_[TX]->{rstack}->[$rstack_top_idx]->isa('Env::Transaction::AtomicTask') 
 	#	? $rstack_top_idx - 1 
 	#	: $rstack_top_idx;
@@ -202,7 +200,7 @@ sub rollback
 		my $cmd = $curtask->{'_undo'};
 		my @rc = ();
 		## no critic
-		eval { @rc = (&{$cmd->[0]}( ( $#{@$cmd} > 0 ) ? (@{$cmd}[1..$#{@$cmd}]): () ) ) ; };
+		eval { @rc = (&{$cmd->[0]}( ( $#{$cmd} > 0 ) ? (@{$cmd}[1..$#{$cmd}]): () ) ) ; };
 		## use critic
 		if ($@) { carp('UNEXPECTED_UNDO_ERROR'.$@); }
 		$_[TX]->{taskmap}->{$curtask->name()}->{'_undo_output'} = \@rc;
@@ -230,7 +228,7 @@ sub __TX_run_cb
 		my $cmd = $task->{'_callback'};
 		my @rc = ();
 		## no critic
-		eval { @rc = (&{$cmd->[0]}( ( $#{@$cmd} > 0 ) ? (@{$cmd}[1..$#{@$cmd}]): () ) ) ; };
+		eval { @rc = (&{$cmd->[0]}( ( $#{$cmd} > 0 ) ? (@{$cmd}[1..$#{$cmd}]): () ) ) ; };
 		## use critic
 		if ($@) { carp('UNEXPECTED_CALLBACK_ERROR'.$@); }
 		$_[TX]->{taskmap}->{$task->name()}->{'_callback_output'} = \@rc;
@@ -248,7 +246,7 @@ sub __TX_run_task
 	#print STDERR "__TX_run_task(".$_[TASK]->name()."->run(" . join(',',@$cmd) . "));\n";
 	#print "BUAH: $#{@$cmd} ", join(',',@{$cmd}[1..$#{@$cmd}]),"\n";
 	## no critic
-	eval { @rc = (&{$cmd->[0]}( ( $#{@$cmd} > 0 ) ? (@{$cmd}[1..$#{@$cmd}]): () ) ) ; };
+	eval { @rc = (&{$cmd->[0]}( ( $#{$cmd} > 0 ) ? (@{$cmd}[1..$#{$cmd}]): () ) ) ; };
 	## use critic
 	if ($@) {
 		carp($@);

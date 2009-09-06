@@ -4,3 +4,8 @@ Revision history for Perl extension Env::Transaction.
 	- original version; created by h2xs 1.23 with options
 		-ABOX --use-new-tests Env::Transaction
 
+0.00_02	Sun Sep  6 06:17:45 CDT 2009
+	- removed unnecessary dependencies
+	- removed unnecessary "security" code
+	- repaired broken 5.10 array derefs
+

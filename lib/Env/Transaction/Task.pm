@@ -7,8 +7,10 @@ use strict;
 use Carp qw(croak carp);
 use UNIVERSAL qw(isa);
 use vars qw($VERSION);
-our $VERSION = '0.999';
-use Readonly;
+our $VERSION = '0.00_02';
+## no critic
+$VERSION = eval $VERSION;  # see L<perlmodstyle>
+
 #use base qw(Exporter);
 require Exporter;
 our @ISA = qw(Exporter);
@@ -52,7 +54,7 @@ sub new {
 		return wantarray ? () : undef;
 	}
 	my $task = {};
-	Readonly::Scalar $task->{_name} => delete $args{name};
+	$task->{_name} = delete $args{name};
 	if (!defined $args{'rc'} ) {
 		$args{'rc'} = [\&__TASK_chk_ret];
 	}

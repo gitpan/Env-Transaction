@@ -25,6 +25,7 @@ my $tx2 = new Env::Transaction ( protocol=>TX_TWO_PHASE_COMMIT);
 my $rc = undef;
 diag("prepare four tasks that will succeed");
 my @tasks = ();
+
 for my $tname (qw(OK_ONE OK_TWO OK_THREE OK_FOUR)) {
 	my $task = new Env::Transaction::Task(
 		name		 => "task_$tname",
